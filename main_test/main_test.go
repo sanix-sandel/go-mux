@@ -2,6 +2,8 @@ package main_test
 
 import (
 	"log"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
 
@@ -9,19 +11,6 @@ import (
 )
 
 var a app.App
-
-func TestMain(m *testing.M) {
-	a.Initialize(
-		os.Getenv("APP_DB_USERNAME"),
-		os.Getenv("APP_DB_PASSWORD"),
-		os.Getenv("APP_DB_NAME"),
-	)
-
-	ensureTableExists()
-	code := m.Run()
-	clearTable()
-	os.Exit(code)
-}
 
 func ensureTableExists() {
 	if _, err := a.DB.Exec(tableCreationQuery); err != nil {
@@ -42,3 +31,43 @@ const tableCreationQuery = `CREATE TABLE IF NOT EXISTS products
 	CONSTRAINT products_pkey PRIMARY KEY (id)
 )
 `
+
+func TestMain(m *testing.M) {
+	a.Initialize(
+		os.Getenv("APP_DB_USERNAME"),
+		os.Getenv("APP_DB_PASSWORD"),
+		os.Getenv("APP_DB_NAME"),
+	)
+
+	ensureTableExists()
+	code := m.Run()
+	clearTable()
+	os.Exit(code)
+}
+
+func executeRequest(req *http.Request) *httptest.ResponseRecorder {
+	rr := httptest.NewRecorder()
+	a.Router.ServeHTTP(rr, req)
+
+	return rr
+}
+
+func checkResponseCode(t *testing.T, expected, actual int) {
+	if expected != actual {
+		t.Error("Expected response code %d. Got %d\n", expected, actual)
+	}
+}
+
+func TestEmptyTable(t *testing.T) {
+	clearTable() //delete all the tables
+	//Send a GET request to the /products
+	req, _ := http.NewRequest("GET", "/products", nil)
+
+	response := executeRequest(req)
+
+	checkResponseCode(t, http.StatusOK, response.Code)
+
+	if body := response.Body.String(); body != "[]" {
+		t.Error("Expected an empty array. Got %s", body)
+	}
+}
